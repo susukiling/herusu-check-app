@@ -109,7 +109,6 @@ footer{font-size:11px;color:var(--sub);text-align:center}
 </main>
 
 <script>
-// ★ GASのウェブアプリURLに置き換えてください
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzulkfZp8lohzuZxGbtTfuYhtF4HvKXaPpqblL0Q9XdUgptLIR2ffZAvpMuhatQHymF6g/exec';
 
 const SYMPTOMS = ['頭痛','肩こり','目の疲れ','だるさ','めまい','腹痛','吐き気','喉の痛み'];
@@ -138,11 +137,8 @@ async function load(){
   render();
 }
 async function save(payload){
-  // text/plain にするとプリフライトが発生せず、GASでもCORSエラーにならない
-  const res = await fetch(GAS_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
-  const json = await res.json();
-  if(json.status !== 'success') throw new Error(json.message);
-  return json;
+  // no-cors + text/plain：GASの返答は読めないが、送信は確実に通る。成功したかは再読み込みで確認する
+  await fetch(GAS_URL, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
 }
 
 /* ---------- 期間・集計 ---------- */
@@ -280,13 +276,20 @@ $('go').onclick = async ()=>{
   $('adv').scrollIntoView({behavior:'smooth',block:'nearest'});
 
   $('go').disabled = true; msg.textContent = '保存中…';
+  const lastBefore = rows.length ? rows[rows.length-1].timestamp : '';
   try{
-    const r = await save(data);
-    rows.push({...data, timestamp:r.timestamp, date:new Date()});
-    msg.textContent = '記録しました。';
-    render();
+    await save(data);
+    await new Promise(r => setTimeout(r, 1200));
+    await load(); // シートから読み直してグラフを更新
+    const lastAfter = rows.length ? rows[rows.length-1].timestamp : '';
+    if(lastAfter !== lastBefore){
+      msg.textContent = '記録しました。'; msg.className = 'msg';
+    }else{
+      msg.textContent = '保存を確認できませんでした。スプレッドシートを見て、増えていなければGASの再デプロイ（新バージョン）と公開設定（全員）を確認してください。';
+      msg.className = 'msg err';
+    }
   }catch(e){
-    msg.textContent = '保存に失敗しました：' + e.message; msg.className='msg err';
+    msg.textContent = '送信できませんでした。通信状況を確認してください。（' + e.message + '）'; msg.className='msg err';
   }
   $('go').disabled = false;
 };
