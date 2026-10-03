@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>体調ログ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#eef3f1;--card:#fff;--ink:#17302b;--sub:#6a7d78;--line:#d9e3df;--green:#16a37f;--red:#d9534f;--r:14px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Zen Kaku Gothic New",sans-serif;line-height:1.6}
+main{max-width:560px;margin:0 auto;padding:16px 14px 48px}
+h1{font-size:18px;margin:4px 2px 12px}
+section{background:var(--card);border-radius:var(--r);padding:16px;margin-bottom:14px}
+h2{font-size:15px;margin:0 0 10px}
+.top{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px}
+select,input,textarea{font:inherit;color:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff;width:100%}
+.top select{width:auto;max-width:66%}
+.ticker{display:flex;align-items:baseline;gap:10px;margin:6px 0 2px}
+.big{font-size:38px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.delta{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.up{color:var(--green)}.down{color:var(--red)}
+.cap{font-size:12px;color:var(--sub)}
+.periods{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;background:var(--bg);padding:4px;border-radius:12px;margin-top:10px}
+.periods button{border:0;background:none;font:inherit;font-size:13px;padding:7px 0;border-radius:9px;color:var(--sub);cursor:pointer}
+.periods button[aria-pressed=true]{background:var(--ink);color:#fff;font-weight:700}
+.chart{position:relative;height:240px;margin-top:10px}
+.empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--sub);font-size:14px;text-align:center}
+label.f{display:block;font-size:13px;font-weight:700;margin:14px 0 6px}
+.cond{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.cond button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 0;font:inherit;cursor:pointer;line-height:1.3}
+.cond button small{display:block;font-size:10px;color:var(--sub)}
+.cond button[aria-pressed=true]{border-color:var(--green);background:#e5f6f0;font-weight:700}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tags button{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
+.tags button[aria-pressed=true]{background:var(--green);border-color:var(--green);color:#fff}
+.go{width:100%;margin-top:18px;border:0;background:var(--green);color:#fff;font:inherit;font-weight:700;font-size:16px;padding:13px;border-radius:12px;cursor:pointer}
+.go:disabled{opacity:.5}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.adv{display:none}
+.adv div{padding:10px 0;border-top:1px solid var(--line)}
+.adv div:first-of-type{border-top:0}
+.adv b{display:block;font-size:12px;color:var(--green)}
+.msg{font-size:13px;margin-top:8px;min-height:1.4em}
+.err{color:var(--red)}
+footer{font-size:11px;color:var(--sub);text-align:center}
+</style>
+</head>
+<body>
+<main>
+<h1>体調ログ</h1>
+
+<section>
+  <div class="top">
+    <h2 style="margin:0">推移</h2>
+    <select id="metric" aria-label="表示する記録">
+      <option value="combo">コンディション＋睡眠時間</option>
+      <option value="condition">総合コンディション</option>
+      <option value="sleep">睡眠時間</option>
+      <option value="quality">睡眠の質</option>
+      <option value="symptoms">症状の数</option>
+    </select>
+  </div>
+  <div class="ticker"><span class="big" id="big">–</span><span class="delta" id="delta"></span></div>
+  <div class="cap" id="cap"></div>
+  <div class="chart"><canvas id="chart"></canvas><div class="empty" id="empty">この期間の記録はまだありません</div></div>
+  <div class="periods" id="periods" role="group" aria-label="表示期間">
+    <button data-p="today">今日</button>
+    <button data-p="1w">1週間</button>
+    <button data-p="1m">1ヶ月</button>
+    <button data-p="1y">1年</button>
+    <button data-p="all">全期間</button>
+  </div>
+</section>
+
+<section>
+  <h2>今日の記録</h2>
+  <label class="f">総合コンディション</label>
+  <div class="cond" id="cond">
+    <button data-v="1">😫<small>絶不調</small></button>
+    <button data-v="2">😟<small>不調</small></button>
+    <button data-v="3">😐<small>ふつう</small></button>
+    <button data-v="4">🙂<small>好調</small></button>
+    <button data-v="5">😄<small>絶好調</small></button>
+  </div>
+  <label class="f" for="sleep">睡眠時間（時間）</label>
+  <input id="sleep" type="number" inputmode="decimal" min="0" max="24" step="0.5" placeholder="例：6.5">
+  <label class="f" for="quality">睡眠の質</label>
+  <select id="quality">
+    <option>熟睡</option><option>途中覚醒</option><option>寝不足</option>
+  </select>
+  <label class="f">身体症状</label>
+  <div class="tags" id="tags"></div>
+  <label class="f" for="memo">メモ</label>
+  <textarea id="memo" rows="2" placeholder="気になったことなど"></textarea>
+  <button class="go" id="go">記録してアドバイスを見る</button>
+  <div class="msg" id="msg" role="status"></div>
+</section>
+
+<section class="adv" id="adv">
+  <h2>今日のアドバイス</h2>
+  <div id="advBody"></div>
+</section>
+
+<footer>医療的な診断ではありません。つらい症状が続く場合は医療機関へ。</footer>
+</main>
+
+<script>
+// ★ GASのウェブアプリURLに置き換えてください
+const GAS_URL = 'https://script.google.com/macros/s/xxxxxxxx/exec';
+
+const SYMPTOMS = ['頭痛','肩こり','目の疲れ','だるさ','めまい','腹痛','吐き気','喉の痛み'];
+const QUALITY_SCORE = {'熟睡':3,'途中覚醒':2,'寝不足':1};
+const METRICS = {
+  condition:{label:'総合コンディション',get:r=>r.condition,unit:'',min:1,max:5},
+  sleep:{label:'睡眠時間',get:r=>r.sleepHours,unit:'h'},
+  quality:{label:'睡眠の質（3=熟睡 / 2=途中覚醒 / 1=寝不足）',get:r=>QUALITY_SCORE[r.sleepQuality]||null,unit:'',min:1,max:3},
+  symptoms:{label:'症状の数',get:r=>r.symptoms.length,unit:'個',min:0}
+};
+const $ = id => document.getElementById(id);
+let rows = [], period = '1w', metric = 'combo', chart = null;
+let selCond = null, selTags = new Set();
+
+/* ---------- データ取得・保存 ---------- */
+async function load(){
+  try{
+    const res = await fetch(GAS_URL);
+    const json = await res.json();
+    if(json.status !== 'success') throw new Error(json.message);
+    rows = json.data.map(r => ({...r, date:new Date(r.timestamp)})).filter(r => !isNaN(r.date));
+  }catch(e){
+    $('msg').textContent = 'データを読み込めませんでした。GAS_URLと公開設定を確認してください。';
+    $('msg').className = 'msg err';
+  }
+  render();
+}
+async function save(payload){
+  // text/plain にするとプリフライトが発生せず、GASでもCORSエラーにならない
+  const res = await fetch(GAS_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
+  const json = await res.json();
+  if(json.status !== 'success') throw new Error(json.message);
+  return json;
+}
+
+/* ---------- 期間・集計 ---------- */
+function startOf(p, now){
+  const d = new Date(now);
+  if(p==='today'){ d.setHours(0,0,0,0); return d; }
+  if(p==='1w') return new Date(now - 7*864e5);
+  if(p==='1m') return new Date(now - 30*864e5);
+  if(p==='1y') return new Date(now - 365*864e5);
+  return new Date(0);
+}
+const pad = n => String(n).padStart(2,'0');
+function bucketKey(d){
+  if(period==='today') return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if(period==='1y' || period==='all') return `${String(d.getFullYear()).slice(2)}/${d.getMonth()+1}`;
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+// 同じ日（1年・全期間は同じ月）の記録は平均して1点にまとめる
+function bucketize(list, getters){
+  const map = new Map();
+  list.forEach(r=>{
+    const k = bucketKey(r.date);
+    if(!map.has(k)) map.set(k, []);
+    map.get(k).push(r);
+  });
+  const labels = [...map.keys()];
+  const series = getters.map(g => labels.map(k=>{
+    const v = map.get(k).map(g).filter(x=>x!=null && !isNaN(x));
+    return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length*100)/100 : null;
+  }));
+  return {labels, series};
+}
+const avg = (list,g)=>{const v=list.map(g).filter(x=>x!=null&&!isNaN(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
+
+/* ---------- 描画 ---------- */
+function render(){
+  document.querySelectorAll('#periods button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.p===period));
+  const now = Date.now(), start = startOf(period, now);
+  const cur = rows.filter(r=>r.date>=start);
+  const m = METRICS[metric==='combo' ? 'condition' : metric];
+
+  // 株価風の数字：期間平均と、直前の同じ長さの期間との差
+  const a = avg(cur, m.get);
+  $('big').textContent = a==null ? '–' : a.toFixed(1) + m.unit;
+  $('cap').textContent = m.label + 'の期間平均';
+  const d = $('delta'); d.textContent=''; d.className='delta';
+  if(a!=null && period!=='all'){
+    const prevStart = new Date(start - (now - start));
+    const p = avg(rows.filter(r=>r.date>=prevStart && r.date<start), m.get);
+    if(p!=null){
+      const diff = a-p;
+      d.textContent = (diff>=0?'▲ +':'▼ ') + diff.toFixed(1) + m.unit;
+      d.className = 'delta ' + (diff>=0 ? 'up':'down');
+    }
+  }
+
+  $('empty').style.display = cur.length ? 'none' : 'flex';
+  const cfg = metric==='combo' ? buildCombo(cur) : buildSingle(cur, m);
+  if(chart) chart.destroy();
+  chart = new Chart($('chart'), cfg);
+}
+
+const baseOpts = {responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+  plugins:{legend:{display:true,labels:{boxWidth:12,font:{family:'Zen Kaku Gothic New'}}}}};
+
+function buildCombo(list){
+  const {labels, series} = bucketize(list, [r=>r.condition, r=>r.sleepHours]);
+  return {data:{labels, datasets:[
+    {type:'bar', label:'睡眠時間(h)', data:series[1], yAxisID:'y1', backgroundColor:'#a9b8e8', borderRadius:4, order:2},
+    {type:'line', label:'コンディション', data:series[0], yAxisID:'y', borderColor:'#16a37f', backgroundColor:'#16a37f', tension:.3, spanGaps:true, pointRadius:3, order:1}
+  ]}, options:{...baseOpts, scales:{
+    y:{position:'left', min:1, max:5, ticks:{stepSize:1}, title:{display:true,text:'コンディション'}},
+    y1:{position:'right', min:0, suggestedMax:10, grid:{drawOnChartArea:false}, title:{display:true,text:'睡眠(h)'}}
+  }}};
+}
+function buildSingle(list, m){
+  const {labels, series} = bucketize(list, [m.get]);
+  const isBar = metric==='sleep' || metric==='symptoms';
+  const y = {};
+  if(m.min!=null) y.min = m.min;
+  if(m.max!=null) y.max = m.max;
+  if(isBar) y.beginAtZero = true;
+  return {type: isBar?'bar':'line', data:{labels, datasets:[{
+    label:m.label, data:series[0], borderColor:'#16a37f', backgroundColor: isBar?'#a9b8e8':'#16a37f',
+    borderRadius:4, tension:.3, spanGaps:true, pointRadius:3
+  }]}, options:{...baseOpts, plugins:{legend:{display:false}}, scales:{y}}};
+}
+
+/* ---------- アドバイス生成 ---------- */
+function makeAdvice(d){
+  const low = d.condition <= 3;
+  const now = low
+    ? 'いまは無理をせず、コップ1杯の水を飲んで深呼吸を。5分だけ座って休みましょう。'
+    : '調子は悪くありません。軽く伸びをして、水分を取っておきましょう。';
+  let day;
+  if(d.symptoms.includes('頭痛')) day = '頭痛があります。画面から離れて静かな場所で休み、水分を取りましょう。続く場合は予定を軽くしてください。';
+  else if(d.symptoms.includes('肩こり')) day = '肩こりがあります。1時間に1回は立ち上がり、肩を回して首をゆっくり伸ばしましょう。';
+  else if(d.symptoms.includes('目の疲れ')) day = '目が疲れています。20分ごとに20秒、遠くを見て目を休めましょう。';
+  else day = low ? '日中は予定を詰め込みすぎず、休憩を多めに入れましょう。' : '日中は普段どおりで大丈夫です。昼に外の光を浴びると夜に眠りやすくなります。';
+  const night = (d.sleepHours < 6 || d.sleepQuality==='寝不足')
+    ? '睡眠が足りていません。今夜はカフェインを夕方までにして、いつもより早めに寝ましょう。'
+    : (d.sleepQuality==='途中覚醒'
+      ? '夜中に目が覚めがちです。寝る1時間前から画面を減らし、ぬるめの入浴で整えましょう。'
+      : '睡眠は取れています。今夜も同じ時間に寝て、このリズムを保ちましょう。');
+  return [['今すぐ',now],['日中',day],['夜',night]];
+}
+
+/* ---------- フォーム ---------- */
+SYMPTOMS.forEach(s=>{
+  const b = document.createElement('button');
+  b.type='button'; b.textContent=s; b.setAttribute('aria-pressed','false');
+  b.onclick = ()=>{ selTags.has(s)?selTags.delete(s):selTags.add(s); b.setAttribute('aria-pressed', selTags.has(s)); };
+  $('tags').appendChild(b);
+});
+document.querySelectorAll('#cond button').forEach(b=>{
+  b.type='button'; b.setAttribute('aria-pressed','false');
+  b.onclick = ()=>{
+    selCond = Number(b.dataset.v);
+    document.querySelectorAll('#cond button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  };
+});
+document.querySelectorAll('#periods button').forEach(b=>b.onclick=()=>{ period=b.dataset.p; render(); });
+$('metric').onchange = e => { metric = e.target.value; render(); };
+
+$('go').onclick = async ()=>{
+  const msg = $('msg'); msg.className='msg';
+  const sleepHours = parseFloat($('sleep').value);
+  if(!selCond){ msg.textContent='コンディションを選んでください。'; msg.className='msg err'; return; }
+  if(isNaN(sleepHours) || sleepHours<0 || sleepHours>24){ msg.textContent='睡眠時間を0〜24の数字で入力してください。'; msg.className='msg err'; return; }
+  const data = {condition:selCond, sleepHours, sleepQuality:$('quality').value, symptoms:[...selTags], memo:$('memo').value.trim()};
+
+  // アドバイスは保存結果を待たずにすぐ表示
+  $('advBody').innerHTML = makeAdvice(data).map(([t,x])=>`<div><b>${t}</b>${x}</div>`).join('');
+  $('adv').style.display = 'block';
+  $('adv').scrollIntoView({behavior:'smooth',block:'nearest'});
+
+  $('go').disabled = true; msg.textContent = '保存中…';
+  try{
+    const r = await save(data);
+    rows.push({...data, timestamp:r.timestamp, date:new Date()});
+    msg.textContent = '記録しました。';
+    render();
+  }catch(e){
+    msg.textContent = '保存に失敗しました：' + e.message; msg.className='msg err';
+  }
+  $('go').disabled = false;
+};
+
+load();
+</script>
+</body>
+</html>
